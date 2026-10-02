@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="22.0.3">
+  <diagram name="UAUV-pipeline">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1750" pageHeight="2300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE -->
+        <mxCell id="title" value="HAUV (Hybrid Aerial-Underwater Vehicle) &#8212; Single Oblique-Wing Design &amp; Optimisation Pipeline&#xa;GP (Geometric Programming) + CFD (Computational Fluid Dynamics) + BO (Bayesian Optimization)" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;whiteSpace=wrap;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="480" y="10" width="700" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ================= SPINE ================= -->
+
+        <!-- 0. SPEC & CONFIG -->
+        <mxCell id="spec" value="SPEC &amp; CONFIG&#xa;(qualitative human decisions &#8212; optimiser cannot pick these)&#xa;&#xa;&#8226; 50 m/s in air &#183; V_w (water speed) SWEPT 2&#8211;20 m/s (electric realistic 2&#8211;5)&#xa;&#8226; payload &#183; scale 1 m vs 2.8 m (OPEN)&#xa;&#8226; single oblique wing, ONE central pivot&#xa;&#8226; novelty: STOW-not-discard &#183; retained steerable &#916; (skew angle) wing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;verticalAlign=middle;spacingLeft=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="580" y="90" width="460" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 1. CFD DOE swimlane -->
+        <mxCell id="cfd" value="CFD (Computational Fluid Dynamics) DOE (Design of Experiments) &#8212; batch, up front + on refit" style="swimlane;whiteSpace=wrap;html=1;startSize=34;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="540" y="290" width="540" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="cfd_aero" value="AERO: simpleFoam, k-&#969; SST (Shear-Stress Transport), air 50 m/s&#xa;&#8594; C_L, C_D, C_m (&#945;, &#916;, AR, Re) + roll C_l(&#916;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="cfd">
+          <mxGeometry x="20" y="44" width="500" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="cfd_hydro" value="HYDRO: simpleFoam, water (V_w swept)&#xa;&#8594; C_L, C_D + &#8722;Cp,min (cavitation margin: &#963; vs &#8722;Cp,min)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="cfd">
+          <mxGeometry x="20" y="102" width="500" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="cfd_entry" value="ENTRY: interFoam VOF (Volume Of Fluid), 2D rigid (cavitation OFF baseline)&#xa;&#8594; a_peak (impact accel.)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="cfd">
+          <mxGeometry x="20" y="160" width="500" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="cfd_note" value="KEY: fit coefficients in DIMENSIONLESS variables (&#945;, &#916;, AR, Re, &#948;/d, &#964;) &#8594; scale-invariant, GP can resize freely" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff9db;strokeColor=#d6b656;fontSize=10;fontStyle=2;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="cfd">
+          <mxGeometry x="20" y="218" width="500" height="42" as="geometry" />
+        </mxCell>
+
+        <!-- 2. cache -->
+        <mxCell id="cache" value="Sample cache (CSV / SQLite)&#xa;keyed by design vector &#183; mean of last 10% &#183; NaN on divergence" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#000000;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="660" y="620" width="300" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- 3. GPfit -->
+        <mxCell id="gpfit" value="GPfit &#8594; posynomial surrogate&#xa;(softmax-affine, dimensionless polar fits)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="610" y="750" width="400" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- 4. LAYER A -->
+        <mxCell id="layerA" value="LAYER A &#183; GP (Geometric Programming) SIZING &#8212; GPkit / MOSEK (static)" style="swimlane;whiteSpace=wrap;html=1;startSize=34;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="540" y="850" width="540" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="a_model" value="mass build-up &#183; W = &#189;&#961;V&#178;S&#183;C_L &#183; C_D = C_D0 + kC_L&#178;&#xa;buoyancy closure m &#8804; &#961;V_hull &#183; energy / battery &#183; objective min R&#8315;&#185;&#xa;TRUST-REGION box constraint on design variables" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef3fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="layerA">
+          <mxGeometry x="20" y="44" width="500" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="a_out" value="OUT: geometry (S, b, c, &#948;) &#183; mass &#183; battery&#xa;+ DUAL sensitivities (free from the solve &#8594; tornado)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef3fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="layerA">
+          <mxGeometry x="20" y="128" width="500" height="58" as="geometry" />
+        </mxCell>
+
+        <!-- 5. DECISION 1 (refit) -->
+        <mxCell id="dec1" value="x* inside trust-region box&#xa;AND fresh CFD at x*&#xa;matches surrogate (within tol) ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1130" width="420" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- 6. LAYER B -->
+        <mxCell id="layerB" value="LAYER B &#183; TRAJECTORY OPT &#8212; BO (Bayesian Optimization) over cheap 3-DOF (3 Degrees Of Freedom) sim (dynamic)" style="swimlane;whiteSpace=wrap;html=1;startSize=44;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1350" width="580" height="270" as="geometry" />
+        </mxCell>
+        <mxCell id="b_dv" value="DESIGN VECTOR (what BO searches): skew SCHEDULE&#xa;&#916;-onset altitude &#183; skew rate d&#916;/dt &#183; coast gap &#183; pop-up / dive / entry angles &#183; exit &#916;(t)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef3fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="layerB">
+          <mxGeometry x="20" y="54" width="540" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="b_sim" value="3-DOF SIM (ms each; NO CFD in loop): cruise &#8594; pop-up &#8594; dive w/ &#916;(t) &#8594; coast&#xa;&#8594; ENTRY &#8594; underwater &#8594; EXIT w/ &#916;(t) &#8594; climb out" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef3fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="layerB">
+          <mxGeometry x="20" y="112" width="540" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="b_obj" value="OBJECTIVE: max range / min impact &#183; CONSTRAINTS: a_peak &#8804; 20 g,&#xa;entry angle &#8776; &#8722;15&#176;, roll rate &#8776; 0 at entry, exit lift authority sufficient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef3fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="layerB">
+          <mxGeometry x="20" y="170" width="540" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- 7. DECISION 2 (A<->B feedback) -->
+        <mxCell id="dec2" value="Layer B demands heavier&#xa;actuator / bigger tail&#xa;(&#8710; mass) ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1680" width="420" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 8. OUTPUTS -->
+        <mxCell id="outputs" value="OUTPUTS / CONCLUSIONS" style="swimlane;whiteSpace=wrap;html=1;startSize=34;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1880" width="580" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="out_a" value="LAYER A results&#xa;&#8226; mass breakdown&#xa;&#8226; &#948;-trade &amp; c/d crossover chart&#xa;&#8226; sensitivity tornado&#xa;&#8226; V_w sweep: self-compensation&#xa;&#160;&#160;crossover speed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;verticalAlign=top;spacingTop=6;fontColor=#000000;" vertex="1" parent="outputs">
+          <mxGeometry x="20" y="44" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="out_b" value="LAYER B conclusions&#xa;(1) dynamic GO / NO-GO feasibility&#xa;(2) reference trajectory + commanded&#xa;&#160;&#160;&#916;(t) = the CONTROL LAW&#xa;(3) actuator / structure SPEC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;verticalAlign=top;spacingTop=6;fontColor=#000000;" vertex="1" parent="outputs">
+          <mxGeometry x="300" y="44" width="260" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- 9. HANDOFF -->
+        <mxCell id="h_ctrl" value="&#8594; CONTROLS&#xa;flight control law tracks ref. traj.;&#xa;feedforward tail deflection cancels&#xa;skew-induced roll" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="500" y="2150" width="290" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="h_proto" value="&#8594; PROTOTYPING&#xa;actuator rate / torque; mechanical&#xa;lock takes entry load (not motor);&#xa;fins / tail sizing" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="830" y="2150" width="290" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ================= LEFT COLUMN: FURTHER RESEARCH ================= -->
+        <mxCell id="r1" value="[BLOCKING &#8212; DO FIRST]&#xa;Novelty / prior-art search:&#xa;&#26039;&#32622;&#32764; (oblique wing) &#215; &#36328;&#20171;&#36136; (trans-medium);&#xa;patents CN114590387A / CN117400675A /&#xa;CN117207723A (no journal equivalent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" value="Scale decision 1 m vs 2.8 m&#xa;(build/mesh cost vs Long validation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="210" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" value="C_l(&#916;) roll coefficient&#xa;= single highest-value unknown&#xa;(couples to yaw/pitch &amp; cavity collapse)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" value="Cavitation for high-speed generality&#xa;(Zwart model). SOLVER GAP: no single&#xa;OpenFOAM solver = VOF + cavitation +&#xa;overset + 6-DOF. Validate vs Xu 2019&#xa;as a separate case." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="r5" value="LEARN: TRMM (Trust-Region Model&#xa;Management) &#8212; convergence when&#xa;coefficients are nonlinear/nonconventional" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1140" width="320" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="r6" value="Water-EXIT dynamics&#xa;(beyond Long's one-way air&#8594;water):&#xa;rotate &#916; back up for lift to climb out" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1400" width="320" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ================= RIGHT COLUMN: TOOLS ================= -->
+        <mxCell id="t1" value="OpenFOAM ESI v2606&#xa;(gerlero native ARM on Mac;&#xa;NOT x86 Docker)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="300" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" value="ParaView&#xa;(Cp contours, free surface, y+ maps)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="390" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="t4" value="GPfit (posynomial fitting)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="750" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="t3" value="GPkit + MOSEK (free academic licence)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="920" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="t5" value="scikit-optimize / BoTorch&#xa;(Bayesian optimization)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="1420" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="t6" value="numpy / scipy (solve_ivp for 3-DOF sim)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="1500" width="300" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ================= LEGEND ================= -->
+        <mxCell id="legend" value="Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1600" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" value="" style="rounded=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="32" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg1t" value="Process / optimiser layer" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="30" width="260" height="20" as="geometry" /></mxCell>
+        <mxCell id="lg2" value="" style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="56" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg2t" value="CFD data generation" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="54" width="260" height="20" as="geometry" /></mxCell>
+        <mxCell id="lg3" value="" style="rhombus;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="80" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg3t" value="Decision / loop gate" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="78" width="260" height="20" as="geometry" /></mxCell>
+        <mxCell id="lg4" value="" style="rounded=1;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="104" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg4t" value="Outputs / conclusions" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="102" width="260" height="20" as="geometry" /></mxCell>
+        <mxCell id="lg5" value="" style="rounded=1;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="128" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg5t" value="Further research required" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="126" width="260" height="20" as="geometry" /></mxCell>
+        <mxCell id="lg6" value="" style="rounded=1;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="12" y="152" width="30" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg6t" value="Tool to install / use (dashed link)" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#000000;" vertex="1" parent="legend"><mxGeometry x="50" y="150" width="260" height="20" as="geometry" /></mxCell>
+
+        <!-- ================= SPINE EDGES (solid) ================= -->
+        <mxCell id="e_spec_cfd" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontColor=#000000;" edge="1" parent="1" source="spec" target="cfd"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_cfd_cache" value="sweep results" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=10;labelBackgroundColor=#ffffff;fontColor=#000000;" edge="1" parent="1" source="cfd" target="cache"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_cache_gpfit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontColor=#000000;" edge="1" parent="1" source="cache" target="gpfit"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_gpfit_A" value="dimensionless&#xa;surrogate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=10;labelBackgroundColor=#ffffff;fontColor=#000000;" edge="1" parent="1" source="gpfit" target="layerA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_A_dec1" value="optimum x*" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=10;labelBackgroundColor=#ffffff;fontColor=#000000;" edge="1" parent="1" source="layerA" target="dec1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_dec1_B" value="YES: converged&#xa;(geometry + mass fixed)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;fontColor=#000000;" edge="1" parent="1" source="dec1" target="layerB"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_B_dec2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontColor=#000000;" edge="1" parent="1" source="layerB" target="dec2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_dec2_out" value="NO: proceed" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;fontColor=#000000;" edge="1" parent="1" source="dec2" target="outputs"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_out_ctrl" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.35;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontColor=#000000;" edge="1" parent="1" source="outputs" target="h_ctrl"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_out_proto" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.65;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fontColor=#000000;" edge="1" parent="1" source="outputs" target="h_proto"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- ================= LOOP EDGES (far-right corridors) ================= -->
+        <!-- Refit loop: dec1 NO -> back to CFD -->
+        <mxCell id="e_refit" value="NO: re-sample local box, refit,&#xa;re-solve (OUTER REFIT LOOP, ~3&#8211;6x)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#b85450;fontColor=#000000;fontSize=11;fontStyle=1;dashed=0;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="dec1" target="cfd">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1620" y="1205" /><mxPoint x="1620" y="270" /><mxPoint x="810" y="270" /></Array></mxGeometry>
+        </mxCell>
+        <!-- Feedback loop: dec2 YES -> back to Layer A -->
+        <mxCell id="e_feedback" value="YES: heavier actuator / tail&#xa;&#8710; mass &#8594; re-size (A &#8596; B LOOP)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.85;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#b85450;fontColor=#000000;fontSize=11;fontStyle=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="dec2" target="layerA">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1690" y="1750" /><mxPoint x="1690" y="835" /><mxPoint x="999" y="835" /></Array></mxGeometry>
+        </mxCell>
+
+        <!-- ================= ANNOTATION EDGES (dashed) ================= -->
+        <mxCell id="a_r1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.4;fontColor=#000000;" edge="1" parent="1" source="r1" target="spec"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_r3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.7;fontColor=#000000;" edge="1" parent="1" source="r3" target="spec"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_r2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.3;fontColor=#000000;" edge="1" parent="1" source="r2" target="cfd"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_r4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.7;fontColor=#000000;" edge="1" parent="1" source="r4" target="cfd"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_r5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontColor=#000000;" edge="1" parent="1" source="r5" target="dec1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_r6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.25;fontColor=#000000;" edge="1" parent="1" source="r6" target="layerB"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="a_t1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.25;fontColor=#000000;" edge="1" parent="1" source="t1" target="cfd"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_t2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.55;fontColor=#000000;" edge="1" parent="1" source="t2" target="cfd"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_t4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.5;fontColor=#000000;" edge="1" parent="1" source="t4" target="gpfit"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_t3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.5;fontColor=#000000;" edge="1" parent="1" source="t3" target="layerA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_t5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.35;fontColor=#000000;" edge="1" parent="1" source="t5" target="layerB"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a_t6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;endArrow=open;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.6;fontColor=#000000;" edge="1" parent="1" source="t6" target="layerB"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

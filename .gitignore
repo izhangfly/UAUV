@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+# Generated / large artifacts
+*.pdf
+*.png
+*.pptx
+*.tgz
+*.log
+*.json
+*.foam
+OpenFOAM*/
+stl/
+stl_clean/
+# Secrets
+.env
+*.key
+*.pem
+# OS
+.DS_Store

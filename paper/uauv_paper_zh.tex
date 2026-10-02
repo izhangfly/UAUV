@@ -1,0 +1,473 @@
+% Chinese build uses ctexart (xelatex): it auto-configures a system CJK font and
+% renders reliably, whereas the pdfLaTeX-oriented AIAA class breaks xeCJK routing.
+\documentclass[a4paper,10pt,twocolumn]{ctexart}
+\usepackage[margin=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{longtable,tabularx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage[section]{placeins}
+\usepackage{xcolor}
+\newcommand{\gpc}[1]{\textcolor{teal}{\small\textsf{[#1]}}} % GP 类别标记
+\usepackage{array}
+\usepackage{xurl}
+\usepackage[numbers,sort&compress]{natbib}
+\bibliographystyle{new-aiaa}
+\graphicspath{{figures/}}
+\emergencystretch=2.5em
+\AtBeginDocument{%
+  \setlength{\intextsep}{5pt plus 2pt minus 1pt}%
+  \setlength{\textfloatsep}{6pt plus 2pt minus 2pt}%
+  \setlength{\abovecaptionskip}{3pt}%
+  \setlength{\belowcaptionskip}{1pt}%
+}
+
+\title{单斜置机翼跨介质飞行器的 A 层几何规划尺寸设计：\\CFD 标定代理模型与受浮力限制的载荷前沿}
+\author{张一杨\thanks{独立研究者，温彻斯特公学，英国温彻斯特。}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{方法}
+
+\subsection{建模框架与 A 层的范围}
+本飞行器为一细长的导弹形艇体，其单一直机翼安装在一个中央竖直枢轴上。在空中，机翼垂直展
+开于艇身以产生升力；在入水之前，机翼迅速旋转至与艇身平行贴合，因而在水下飞行器成为一个洁净的
+回转体，仅以其较窄外伸段与尾部舵面提供水动力配平力。对这样一个飞行器进行尺寸设计，需要耦合三个
+通常彼此独立的学科——空气动力学、水动力学与结构——以及两种动压相差两个数量级以上的工作介
+质。为使这一耦合问题保持可解并保证所求得的最优解是\emph{全局}最优，
+本设计被分解为三层。A 层，即本文的主题，是一个几何规划问题（GP）：它在给定的机翼斜置角与给定
+的浮力状态下，确定全部连续尺寸变量的数值。B 层是一个在俯冲过程中调度机翼斜置轨迹的贝叶斯优化器~\cite{long2025entire}，
+有待 A 层确认艇体参数后研究，暂时不作讨论。一项计算流体力学（CFD）研究为这两层提供空
+气动力与水动力系数。
+
+几何规划是这样一类优化问题：在正项式（posynomial）不等式约束与单项式（monomial）等式约束
+下，最小化一个正项式目标。\emph{单项式}是设计变量若干次幂之积，且前置系数为正；\emph{正项
+式}则是若干单项式之和。使该表述具有吸引力的决定性性质在于：在变量替换 $u_i\mapsto\ln u_i$
+之下，每个 GP 都成为凸问题，因而求解器返回的是全局最优——而非仅仅局部最优~\cite{boyd2007tutorial}——
+同时算法可根据最优解附近的局部特征给出目标对每一约束的灵敏度。得到全局最优解的工程代价，是模型里每一条方程都必须被写成正项式或
+单项式形式。下文即在这一约束下，给出 A 层的几何规划模型。
+
+\subsection{CFD 试验设计}\label{sec:cfd}
+A 层无法从第一性原理导出的系数为：空中与水下的阻力极曲线、升力线斜率及其随机翼斜置的变化、
+收拢机翼的配平升力，以及空化吸力峰。正是这些量——且仅有这些量——界定了 CFD 试验设计。两项
+研究在 OpenFOAM~v2606 中以定常不可压求解器 \texttt{simpleFoam} 及 $k$--$\omega$ SST 湍流模
+型完成。空中研究在一个 $17\times12\times12$~m 的自由空气域内，对从收拢（$\Lambda=90^\circ$）
+到展开（$\Lambda=0^\circ$）、每 $10^\circ$ 一档的全部十个机翼位置进行了网格划分，并通过旋转
+入口速度矢量而非重新划分网格，将迎角从 $-4^\circ$ 扫掠至 $+14^\circ$，由此节省了约九成的网
+格划分工作量。水下研究复用同一网格并改用水的物性，在展开与收拢两极加入了 $2$ 至 $20$~m/s
+的速度扫掠，并将工作深度作为后处理参数处理——因为在不可压解中流场与绝对压强水平无关，深度
+仅通过空化数进入。所有力系数均一致地以机翼平面面积为参考，收敛以系数稳定性判定：要求最后
+五十次迭代的均值与前五十次之差小于百分之一，而非以固定的残差阈值判定。作为对整条流程的独
+立校核，收拢机翼的诱导阻力因子在空气与水中——雷诺数相差约 $1.5$ 倍——一致到 $7\%$ 之内；由
+于阻力系数无量纲、且在雷诺数匹配时仅依赖于几何，这一一致性证明两项研究彼此自洽。
+
+\subsection{GP 兼容的代理模型拟合}
+每条 CFD 关系均以 \texttt{gpfit} 流程~\cite{hoburg2016data} 化为 GP 合法的代理式。凡在对数
+坐标下呈仿射的关系，均以对数空间的普通最小二乘拟合为单一单项式——这在数学上等同于单项最大
+仿射拟合，且数值稳健；凡带有真实曲率的关系，则改以多项软极大仿射（softmax-affine）正项式拟
+合。升力线斜率随机翼斜置的变化为
+\begin{equation}
+C_{L\alpha}(\Lambda) = 0.847\,(\cos\Lambda)^{1.105}\ \text{rad}^{-1},
+\qquad(\text{rms}_{\log}=0.011),
+\label{eq:clalpha}
+\end{equation}
+其指数 $1.105$ 与斜置无关性原理所预言的 $1$ 相差不超过百分之十一，故该拟合不止于插值：它印
+证了“只有垂直于机翼的速度分量产生升力”这一解析预期。诱导阻力因子随机翼折叠、其有效展弦比
+坍缩而急剧上升，
+\begin{equation}
+k(\Lambda) = 0.631\,(\cos\Lambda)^{-1.352}\ ,
+\qquad(\text{rms}_{\log}=0.013),
+\label{eq:kschedule}
+\end{equation}
+自完全展开时的 $0.64$ 攀升至收拢时的 $22.9$——这三十六倍的增幅，正是关系式 $k=1/(\pi e A)$
+中展弦比坍缩的直接标志。水下零升阻力随雷诺数标度为 $C_{D0,w}=0.185\,\mathrm{Re}^{-0.112}$，
+其指数落在纯湍流摩擦阻力的 $-0.2$ 与纯形状阻力的 $0$ 之间，与一个阻力由二者混合构成的物体
+相符。空化吸力峰被发现基本为常数——作为无量纲量本应如此：对于收拢构型，其配平升力使之接近
+零升力系数，故 $-C_{p,\min}\approx1.16$，此常数即用作保守的空化门限。
+
+\section{几何规划模型}
+
+\subsection{目标与要求}
+目标是在所需航程下\emph{最大化载荷}：
+\begin{equation}
+\text{minimize}\quad m_{\text{pay}}^{-1},\qquad R_a\ge R_a^{\min},\ \ R_w\ge R_w^{\min}.
+\gpc{单项式目标}
+\end{equation}
+
+\subsection{空中巡航：定常平飞}
+机翼展开时，升力平衡重量、推力平衡阻力~\cite{hoburg2014geometric}：
+\begin{align}
+m g &\le \tfrac12\rho_a V_a^2 S\,C_{L,a}, \gpc{单项式} \\
+D_a &\ge \tfrac12\rho_a V_a^2 S\,C_{D,a}, \gpc{单项式（松弛）} \\
+P_a &\ge D_a V_a / \eta_a. \gpc{单项式}
+\end{align}
+这些即 Ref.~\cite{hoburg2014geometric} 的飞机定常飞行关系式（式~(15)--(18)）。
+
+\subsection{空气动力阻力分解}
+阻力系数分解为诱导、型阻与形状三部分~\cite{hoburg2014geometric,hoerner1965fluid}：
+\begin{align}
+C_{D,a} &\ge \frac{C_{L,a}^2}{\pi e A}
+           + C_{Dp}(C_{L,a},\mathrm{Re},\Lambda)
+           + C_{D0,a}, \gpc{正项式}\\[4pt]
+C_{D0,a} &= C_f\,(1+k)\,\frac{S_{\text{wet}}}{S},
+           \qquad C_f = \frac{0.074}{\mathrm{Re}^{0.2}},
+           \qquad \mathrm{Re} = \frac{\rho_a V_a c}{\mu}, \gpc{单项式}\\[4pt]
+(1+k) &= 1 + 1.5\left(\frac{d}{L}\right)^{3/2}
+        +     7.0\left(\frac{d}{L}\right)^{3}. \gpc{正项式}\label{eq:formfactor}
+\end{align}
+式~\eqref{eq:formfactor} 为 Hoerner~\cite{hoerner1965fluid} 针对流线型回转体的式~(28)。其中
+$1.5(d/L)^{3/2}$ 项刻画超速增量（式~26，$\Delta q_{\text{av}}/q\propto(d/L)^{3/2}$）；$7(d/L)^3$
+项为分离/压差分量，对 $d/L\lesssim0.2$ 可忽略。对我们的艇体（$d/L\approx0.10$）：
+$(1+k)\approx1.054$，即由厚度带来的 \emph{5.4\%} 黏性阻力附加量——远小于设计纲要中保守地计入
+附体所假设的约 $20\%$。服役裕度（SLA）粗糙度/附体增量以经验因子 $f_{\text{SLA}}$ 计入，即
+$(1+k)_{\text{eff}}=f_{\text{SLA}}(1+k)_{\text{naked}}$。湍流平板律
+$C_f=0.074\,\mathrm{Re}^{-0.2}$~\cite{hoburg2014geometric} 为单项式，用以代替 ITTC~1957 对数
+律~\cite{myring1976theoretical,allen2000propulsion}；对 $\mathrm{Re}\approx
+2\times10^{7}$--$3\times10^{6}$（$L\approx 1$~m 上的水/气），幂律拟合误差 $<2\%$。\par
+型阻项 $C_{Dp}(C_{L,a},\mathrm{Re},\Lambda)$ \emph{非解析}，须由 CFD 提供为拟合正项式（第~
+\ref{sec:cfd} 节），遵循 Ref.~\cite{hoburg2016data} 的 gpfit 流程。奥斯瓦尔德因子 $e(\Lambda)$
+的 $\Lambda$ 相关性亦由 CFD 拟合；在 $\Lambda=0$ 处，解析先验为升力线理论给出的
+$e\approx0.9$~\cite{hoerner1985fluid}。
+
+\subsection{推进与续航（电动）}
+对电池电驱动飞行器，Ref.~\cite{hoburg2014geometric} 的燃油消耗/Breguet 模型被恒质量能量平衡取
+代；续航时间 $t$ 等于储存能量除以功率~\cite{allen2000propulsion,rutherford2008southampton,lin2026energies}：
+\begin{align}
+E_b   &= e_b\, m_b,                  & R_a   &= V_a t_a,\quad R_w = V_w t_w, \gpc{单项式}\\
+E_b   &\ge P_a t_a + P_w t_w + P_{\text{hotel}}t_{\text{total}}, \gpc{正项式}\\
+\eta_a&\le \eta_{\text{motor}}\,\eta_{\text{prop}}. \gpc{单项式}
+\end{align}
+空中段的 $\eta_{\text{prop}}$ 遵循 Ref.~\cite{hoburg2014geometric} 式~(37) 的作动盘模型，
+$\eta_i\le 2/(1+\sqrt{1+T/(\frac12\rho V^2 A_{\text{prop}})})$。水下段的最优螺旋桨效率近似为常数
+$\eta_{\text{prop,uw}}\approx0.81$~\cite{allen2000propulsion}。系统级锂离子比能约
+$100$--$180$~Wh/kg（电芯：$190$--$300$~Wh/kg）~\cite{lin2026energies}；REMUS 现场数
+据~\cite{allen2000propulsion} 证实在 $1.5$~m/s 下 $20$~h 耗 $1000$~Wh（$P\approx50$~W）。勤务
+负载约 $200$--$220$~W（勘测级 AUV）~\cite{lin2026energies}；对本一次性冲刺设计，将其并入固定质
+量项，或在载荷功率占主导时略去。
+
+\subsection{质量分解}
+\begin{align}
+m &\ge m_{\text{pay}} + m_s + m_b + m_{\text{prop}} + m_{\text{fixed}}, \gpc{正项式}\\
+m_{\text{prop}} &\le c_m\,P_{\max}. \gpc{单项式（幂律）}\\
+m_s &\ge m_{\text{skin}} + m_{\text{fins}} + m_{\text{pivot}}. \gpc{正项式}
+\end{align}
+若艇体无加强筋（在 $100$~mm 直径下合理），$m_{\text{skin}} = \rho_{\text{mat}}\,\pi d\,L\,t_s$，
+其中 $t_s$ 由屈曲门限定尺（第~\ref{sec:structure} 节）。无刷直流电机加控制器的幂律质量系数
+$c_m$（kg/kW）约 $0.1$--$0.3$~kg/kW（代表性 UAV/UUV 值）；须对照具体厂商数据核验。
+
+\subsection{水下巡航：浮力与机翼配平}\label{sec:buoyancy}
+水下机翼收拢。浮力支撑大部分重量；收拢外伸段提供一个水动力配平力以闭合竖直平衡。取
+$B=\rho_w g\nabla$、失衡分数 $\xi=(W-B)/B$ \emph{作为参数扫掠}，则每次求解时平衡为单项式：
+\begin{align}
+B   &= \rho_w g\, \nabla, \gpc{单项式}\\
+m g &= B\,(1+\xi),        \gpc{关于 $\xi$ 的单项式（每次求解固定）；$\xi$ 自由则为 SP}\\
+L_{\text{tr}} &= \xi B = \tfrac12\rho_w V_w^2 S_{\text{stow}}\,C_{L,\text{uw}}. \gpc{单项式}
+\end{align}
+将 $\xi$ 从略负（正浮力，机翼向下配平）扫至正值（偏重，机翼产生升力——载荷超过浮力上限）即描
+出载荷—配平阻力前沿。配平升力 $L_{\text{tr}}$ 诱导阻力
+$D_{\text{tr}}\ge k_{\text{uw}} L_{\text{tr}}^2/(\tfrac12\rho_w V_w^2 S_{\text{stow}})$，进入水下功
+率项。收拢机翼的水动力行为具有自补偿性：机翼折平时其展弦比坍缩 $A\sim3.3 \to 0.1$（Jones 细长
+体极限 $\sim\pi A/2$~\cite{hoerner1985fluid}），使 $C_{L\alpha}$ 减小的因子（$\sim22$）约等于
+水/气动压比（$\sim130$）除以面积缩减（$\sim3$）：$130/(3\cdot22)\approx1.9$。这一近乎抵消——
+\textit{而非}精确相等——是设计纲要中自补偿论点的解析支柱，并由 HYDRO CFD 研究直接检验。竖直运动
+的附加质量修正在轴向可忽略（$L/d\approx10$ 时 $k_a\approx0.03$~\cite{newman2018marine}），但在
+横向可达排开质量的约 $95\%$~\cite{newman2018marine}；入水时有效质量 $(m+m_a)$ 在冲击约束（第~
+\ref{sec:entry} 节）及任何横向拍腹瞬态（此处未建模）中取代 $m$。
+
+\subsection{水下水动力阻力}
+对细长回转体，
+\begin{align}
+D_w      &= \tfrac12\rho_w V_w^2 S_{\text{wet}}\,C_{D,w}, \gpc{单项式}\\
+C_{D,w}  &\ge C_f\,(1+k) + k_{\text{uw}}\,
+            \frac{L_{\text{tr}}^2}{(\tfrac12\rho_w V_w^2)^2 S_{\text{stow}}^2}, \gpc{正项式}
+\end{align}
+其中 $(1+k)$ 取自式~\eqref{eq:formfactor}（同一形状因子、水的雷诺数）。配平升力诱导阻力系数
+$k_{\text{uw}}$ 来自 CFD（收拢机翼，$\Lambda=90^\circ$）。在 $d/L=0.10$ 处，最小阻力厚度比约
+$0.18$--$0.20$~\cite{hoerner1965fluid}；我们的艇体落在更薄（摩擦主导）的一侧。
+
+\subsection{空化裕度}\label{sec:cavitation}
+空化起始条件~\cite{brennen2014cavitation} 为
+\begin{equation}
+-C_{p,\min}\ \le\ \sigma_i,
+\qquad \sigma = \frac{p_{\text{atm}} + \rho_w g h - p_v}{\tfrac12\rho_w V_w^2},
+\qquad p_v(20^\circ\text{C})\approx 2.34\ \text{kPa}.
+\gpc{正项式 $\le$ 单项式}
+\end{equation}
+在水面（$h=0$，$V_w=20$~m/s）：$\sigma\approx0.495$，与设计纲要一致。Amromin 与
+Rozhdestvensky~\cite{amromin2022cavitation} 指出，在艇体雷诺数
+$\mathrm{Re}\gtrsim10^7$（我们的 $\mathrm{Re}\approx2\times10^7$）时差值
+$|\min C_p|-\sigma_i\to0$，即 $\sigma_i=-C_{p,\min}$ 判据愈发精确。因此该约束是保守的。在此界之
+下运行可使飞行器远离针对专用高速水下体所研究的超空泡状态~\cite{dzielski2003benchmark,zou2023optimized}，
+后者不在本受空化限制的设计范围之内；吸力峰 $-C_{p,\min}$ 即 \emph{CFD 交付量}（由 HYDRO 研究拟
+合为关于 $C_L$ 或 $\alpha$ 的函数）。GP 以
+$\tfrac12\rho_w V_w^2(-C_{p,\min})+p_v\le p_{\text{atm}}+\rho_w g h$ 形式纳入之，它关于 $V_w$ 为
+正项式（其中 $-C_{p,\min}$ 已预先拟合为关于 $C_L$ 的单项式/正项式）。
+
+\subsection{耐压壳结构与屈曲}\label{sec:structure}
+对工作深度 $h$，薄壳环向应力（无加强筋管）给出一条单项式量规约束~\cite{shinoka2024structural}：
+\begin{equation}
+\sigma_h = \frac{p_d\, d}{2 t_s} \le \sigma_y \ \Rightarrow\
+p_d \le \frac{2\sigma_y t_s}{d},
+\qquad p_d = \rho_w g h. \gpc{单项式}
+\end{equation}
+外压屈曲增添第二个极限。Bryant 整体弹性屈曲坍缩压强~\cite{shinoka2024structural} 为
+\begin{equation}
+p_{\text{cr}} = \frac{E\,t_s/a}{\,n^2-1+\lambda^2/2\ }
+                \left[\frac{1}{(n^2+ \lambda^2)^2}\right] + \cdots
+                \gpc{信号式（离散 $n$）/ 非 GP}
+\end{equation}
+其中 $\lambda=\pi a/L$，$a=d/2$ 为半径，$n$ 为整数屈曲瓣数（$\ge2$）。完整的 Bryant 形式（此处
+未完整给出）在分子中还含一个 $\lambda^4$ 因子；此处所示略去之——该式仅为示意，在 GP 实现中将以
+拟合单项式取代。此式为\emph{信号式}（正项式分母取倒），且含对 $n$ 的离散内层极小化。对我们小直
+径（$100$~mm）的薄壁无加强筋管，推荐的 GP 途径是将 $n$ 极小化\emph{析出}为离线评估，并在
+$(t_s/a,\ L/a)$ 范围内按 Windenburg--Trilling 闭式拟合一个单项式
+$p_{\text{cr}} \approx C\,E\,(t_s/a)^\alpha\,(a/L)^\beta$。运行安全系数
+$\mathrm{SF}_{\text{overall}}\ge2.0$~\cite{shinoka2024structural}；GP 中的约束遂为
+$p_d \le p_{\text{cr}}/\mathrm{SF}$，拟合之后仍为单项式。材料：首轮采用铝 6061-T6
+（$E\approx69$~GPa，$\sigma_y\approx 250$~MPa，$\rho\approx2700$~kg/m$^3$）；换用碳纤维或 HY-80
+钢仅改变常数。
+
+\subsection{入水生存}\label{sec:entry}
+入水冲击时的峰值减速由一个自二维 interFoam 试验拟合的单项式建模：
+\begin{equation}
+a_{\text{peak}} = C\, V_{\text{entry}}^a\, d^b\, m_{\text{eff}}^c,
+\qquad m_{\text{eff}} = m + m_a, \gpc{单项式拟合}
+\end{equation}
+其中 $m_a=k_a\rho_w\nabla$ 为轴向附加质量（$k_a\approx0.03$~\cite{newman2018marine}；约 $3\%$ 的
+修正）。砰击理论的解析先验为 $a\approx2$（力 $\propto\frac12\rho V^2$ 乘面积）、$b\approx2$（直
+径平方，源自面积 $\propto d^2$）、$c\approx-1$（牛顿定律）。三个指数皆\emph{由 CFD 拟合}——先验
+仅作合理性核对。硬约束为 $a_{\text{peak}}\le 20\,g$；入水角作为次级参数\emph{保守处理}（近竖直最
+坏情形），除非试验返回强角度依赖。Song 等~\cite{song2020waterentry} 证实高速弹体斜入水的 $V^2$
+标度。GP 约束为单项式：$C V_{\text{entry}}^a d^b m_{\text{eff}}^c \le a_{\max}$。
+
+\subsection{机翼斜置动力学（残余滚转——轨迹门限）}\label{sec:roll}
+在从 $\Lambda=0^\circ$ 斜置至 $\Lambda=90^\circ$ 的过程中，非对称尾流诱导一个由 $C_l(\Lambda)$ 量
+化的滚转力矩。这是价值最高的单一 CFD 未知量——目前在约 $20\times$ 的范围内尚无测量。滚转瞬态时
+间常数为 $\tau\approx0.10$--$0.12$~s。GP \emph{不}优化斜置轨迹（那是 B 层/贝叶斯优化）；它仅施加
+滚转操纵权可行性门限：
+\begin{equation}
+|C_l(\Lambda)| \le C_{l,\max},
+\qquad C_{l,\max} \triangleq \frac{\text{尾翼操纵权}}{\tfrac12\rho V^2 S b}.
+\gpc{单项式界}
+\end{equation}
+$C_l(\Lambda)$ 由 AERO CFD 研究提供为关于 $\Lambda$ 的拟合正项式，$C_{l,\max}$ 由尾翼几何算得：
+十字形“VFin”+“HFin”翼对（约 $0.20$~m 翼展、约 $0.05$~m 弦长）通过升力线尾翼模型提供滚转操纵力
+臂。前馈尾翼偏转调度进一步松弛该门限（按已知的 $C_l(\Lambda)$ 函数预置一个抵消偏转）。
+
+\subsection{静稳定性与尾翼定尺}\label{sec:stability}
+一个缺少静稳定性约束的跨介质飞行器可能收敛到一个无法飞行的最优解。
+Renilson~\cite{renilson2018submarine,fossen2011handbook}（第 3 章，式 113，表 3.8）定义了竖直
+（$G_V$）与水平（$G_H$）平面内的无量纲稳定性指数：
+\begin{align}
+G_V &= 1 - \frac{M'_w\,(m' + Z'_q)}{M'_q\,Z'_w},
+\qquad
+G_H = 1 - \frac{N'_v\,(m' - Y'_v)}{N'_r\,Y'_v}\ \text{（类推）},\ \gpc{信号式（导数符号相异）；$G_H$ 由竖直面形式推得}\\[4pt]
+\text{可接受：}&\quad G_V\in[0.5,\,0.8],\quad G_H\in[0.2,\,0.4] \qquad\text{(Ray~等~2008)}.
+\end{align}
+撇号表示除以 $\frac12\rho V L^2$ 的无量纲稳定性导数（例如 $Z'_w = Z_w/(\frac12\rho V L^2)$）。这些
+导数本身（竖直面的 $Z'_w, M'_w, Z'_q, M'_q$；水平面的 $Y'_v, N'_v, N'_r$）可由尾翼几何、经低展弦
+比升力面理论近似~\cite{hoerner1985fluid}：对置于尾部的十字形尾翼，
+$Z'_w \propto (S_{\text{fin}}/S)(l_{\text{fin}}/\bar{c})$——即尾容量系数~\cite{hoerner1985fluid}
+（第 XI 章），
+\begin{equation}
+V_H = \frac{S_{\text{fin}}}{S}\,\frac{l_{\text{fin}}}{\bar{c}},
+\qquad
+C_{L,\text{fin}} \propto V_H\,\alpha_{\text{fin}}. \gpc{单项式}
+\end{equation}
+对 GP，$G_V$ 与 $G_H$ 约束以\emph{可行性门限}的形式进入，其中导数表示为关于尾翼面积与力臂的单项
+式，采用解析低展弦比升力斜率 $\partial C_L/\partial\alpha \approx \pi A_{\text{fin}}/2$~\cite{hoerner1985fluid}
+（$A_{\text{fin}}\approx 2\cdot\text{span}_f/\text{chord}_f$）。这是原尺寸设计模型中缺失的最重要模
+块。在我们的小尺度（$L\approx1$~m）下，十字形翼对（翼展约 $0.20$~m、弦长约 $0.05$~m）给出
+$A_{\text{fin}}\approx4$，可提供足够的操纵权；稳定性门限对此加以校验，而非置之不理。
+
+\subsection{螺旋桨效率分解}\label{sec:propeller}
+GP 目前采用集总螺旋桨效率 $\eta_{\text{prop}}\approx0.81$~\cite{allen2000propulsion}。
+Renilson~\cite{renilson2018submarine}（第 5 章，式 5.4）将准推进系数（QPC）分解为物理上相异的各
+因子：
+\begin{equation}
+\text{QPC} = \eta_H \cdot \eta_O \cdot \eta_R,
+\qquad \eta_H = \frac{1-t}{1-w}, \gpc{单项式}
+\end{equation}
+其中 $t$ 为推力减额分数，$w$ 为 Taylor 伴流分数（与艇形相关，流线型体
+$\eta_H\approx1.05$~\cite{renilson2018submarine}），$\eta_O$ 为敞水螺旋桨效率（进速比 $J$ 与负荷
+$K_T/J^2$ 的函数），$\eta_R$ 为相对旋转效率，单桨构型约 $1.05$
+（$D_{\text{prop}}/D_{\text{hull}}\approx0.4$--$0.7$）。敞水螺旋桨系数为标准单项
+式~\cite{newman2018marine}（第 2 章）：
+\begin{equation}
+K_T = \frac{T}{\rho n^2 D^4},\quad
+K_Q = \frac{Q}{\rho n^2 D^5},\quad
+J   = \frac{U_A}{n D},\quad
+\eta_O = \frac{J}{2\pi}\frac{K_T}{K_Q}. \gpc{单项式}
+\end{equation}
+若螺旋桨直径 $D$ 与转速 $n$ 成为 GP 变量，则 $K_T$ 与 $K_Q$ 为将推力/扭矩联系到 $D$ 与 $n$ 的单
+项式；设计空间约束 $K_T/J^2 \le (K_T/J^2)_{\max}$ 防止过载。对定几何（“混合”）基线，将 $\eta_O$、
+$\eta_H$、$\eta_R$ 视为常数并回到 $\text{QPC}\approx0.81$。常见 AUV 系统级数值：电机
+$\eta_m\approx0.85$（无刷直流），QPC~$\approx0.8$--$0.9$~\cite{renilson2018submarine}，给出链式效
+率 $\eta_{\text{prop}} = \eta_m\eta_{\text{QPC}} \approx 0.7$--$0.75$。
+
+\subsection{GP 汇总}
+完整的 GP（A 层）为：
+\begin{equation}\label{eq:gpsummary}
+\begin{array}{ll}
+\text{minimize}    & m_{\text{pay}}^{-1} \\
+\text{subject to} & \text{各式（定常飞行、阻力、能量、质量、浮力/$\xi$、水下阻力、}\\
+                  & \hspace{2pt}\text{空化、环向应力、屈曲[拟合]、入水、滚转门限、}\\
+                  & \hspace{2pt}\text{稳定性 $G_V,G_H$、螺旋桨 QPC）}\\
+\text{with}        & \text{$\xi$ 扫掠；$\Lambda=\text{固定}$（在每个 $\Lambda$ 处求解）}\\
+                  & C_{Dp}(\Lambda),\ k(\Lambda),\ C_{L,\text{uw}},\ k_{\text{uw}},\ -C_{p,\min},\ C_l(\Lambda),\ a_{\text{peak}} \text{ 来自 CFD}.
+\end{array}
+\end{equation}
+
+
+\section{模型论证}\label{sec:justify}
+
+\subsection{为何采用几何规划，以及为何扫掠浮力状态}
+选择几何规划不是出于便利，而是出于可信。因对数变换使问题成为凸问题，求解器可确证全局最优，
+并额外、无偿地报告每条约束对目标的推力大小；在同一非凸问题上使用基于梯度的优化器，则二者皆
+不可得。其代价——将每条关系写成正项式——在此处是负担得起的，因为控制物理本就接近幂律形式：
+阻力按雷诺数的幂标度、浮力为几何尺寸之积、诱导阻力为升力的平方。
+
+浮力失衡 $\xi=(W-B)/B$ 度量飞行器重量偏离其所排开水重的程度。$\xi=0$ 时飞行器中性浮、悬停而
+无须配平力；$\xi>0$ 时偏重，收拢机翼须产生向上的配平升力以保持深度；$\xi<0$ 时偏轻，机翼向
+下配平。将失衡作为参数扫掠而非放开，出于一个明确的理由：$\xi$ 固定时，平衡 $mg=B(1+\xi)$ 为
+单项式，整个模型保持为纯 GP；放开 $\xi$ 将使该等式成为信号式，须改用较慢的序贯（信号式规
+划）求解器——此途径已广泛用于飞机设计~\cite{kirschen2018application}。扫掠 $\xi$ 也是物理上更具信息量的选择，因为它直接描出载荷—浮力前沿：更重的飞行
+器有更大的质量预算、因而载荷更多，直到机翼在空中再也无法举起它为止。
+
+\subsection{采用解析阻力并以 CFD 标定，而非固定的 CFD 极曲线}
+将实测的展开机翼阻力极曲线直接代入 GP 是诱人的。此法被否决，有两个原因。其一，固定极曲线绑
+定于单一几何；一旦艇体与机翼成为设计变量（第~\ref{sec:findings} 节），阻力就必须随之标度，
+而这只有解析分解——摩擦系数乘形状因子乘湿面积比——才能做到。其二，也更微妙的是，由扫掠网格
+推得的展开机翼效率并未收敛：拟合所得升力线斜率 $0.835$~rad$^{-1}$ 约为该机翼展弦比下薄翼预
+期的五分之一，而拟合所得诱导因子意味着奥斯瓦尔德效率仅 $0.07$，远低于预期的 $0.8$--$0.9$。
+两处偏差指向同一根源——一个 $57{,}000$ 单元的扫掠网格对机翼随迎角的响应分辨不足——故其绝对
+效率取自解析先验 $e\approx0.85$，胜于取自受网格限制的拟合。CFD \emph{确实}可靠给出的，是
+式~\eqref{eq:clalpha}--\eqref{eq:kschedule} 的无量纲\emph{标度关系}、收拢极曲线（其展弦比坍
+缩是真实效应而非网格伪象）、空化门限，以及经交叉验证的形状因子；模型所用的正是这些。
+
+\subsection{固定与自由几何、可行性门限，以及排除入水}
+模型在两种构型下求解。第一种将几何固定于既有 CAD 尺寸，用以核验现有飞行器能否满足任务；第
+二种在一个发射包线内放开艇体直径与长度、机翼平面形状及尾翼面积，用以揭示优化器所偏好的设
+计。静稳定性要求——其精确形式含符号相异的稳定性导数、因而为信号式——通过标准尾容量系数
+$V_H$ 与 $V_V$ 施加；要求二者超过常规下限，是一个 GP 合法的代理，可在不离开凸世界的前提下保
+证相同的静裕度行为。最后，入水生存被排除于优化之外，有两个原因：峰值减速系数尚待其自身的二
+维冲击研究，且冲击约束是一个通过/失败的生存判据，并不像任务能量与浮力约束那样对飞行器起定
+尺作用。因此它在求解之后作为对已定型设计的审计来评估，而非作为其中的驱动因素。
+
+\section{结果}\label{sec:findings}
+
+\subsection{CFD 拟合系数}
+拟合系数在物理上自洽，且凡有解析先验之处均能予以还原。图~\ref{fig:polars} 给出全部十个斜置
+角的阻力极曲线：诱导阻力因子随机翼折叠平滑而单调地增大，无任何异常点，且每条按机翼分列的极
+曲线都以高于 $0.98$ 的决定系数被复现。图~\ref{fig:clalpha} 绘出升力线斜率随斜置的变化，并叠
+加式~\eqref{eq:clalpha} 的单项式拟合；接近于一的指数印证了 $\cos\Lambda$ 律。图~\ref{fig:kcollapse}
+在对数坐标上给出诱导因子的展弦比坍缩，而图~\ref{fig:cavitation} 说明空化数据为何分为两支——
+收拢构型处于接近零升处，而展开构型跨越一段真实升力区间——因而如最初尝试那样将二者拟合为一
+条曲线是不正确的；收拢支给出门限值。
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.86\linewidth]{aero_polars_all.png}
+\caption{全部十个机翼斜置角的空中阻力极曲线。诱导阻力因子 $k$（图例）自完全展开
+（$\Lambda=0^\circ$）的 $0.64$ 单调升至收拢（$\Lambda=90^\circ$）的 $22.9$。}
+\label{fig:polars}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{sched_CLalpha.png}
+\caption{升力线斜率随机翼斜置的变化。拟合指数 $1.105$ 将 $C_{L\alpha}\propto\cos\Lambda$ 的斜
+置无关性先验印证到百分之十一之内。}
+\label{fig:clalpha}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{sched_k.png}
+\caption{对数坐标下诱导阻力因子随机翼斜置的变化：三十六倍的增幅是机翼折平时展弦比坍缩的标
+志。}
+\label{fig:kcollapse}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.80\linewidth]{cavitation_split.png}
+\caption{空化吸力峰随升力系数的变化。收拢构型（接近零升）与展开构型（有限升力区间）形成两条
+不同的支；收拢支 $-C_{p,\min}\approx1.16$ 设定空化门限。}
+\label{fig:cavitation}
+\end{figure}
+
+\subsection{载荷—浮力前沿}
+图~\ref{fig:payload} 对两种几何情形描出载荷随浮力失衡的变化。在两种情形中，载荷均随 $\xi$ 上
+升，因更重的飞行器有更大的质量预算；在两种情形中，前沿都终止于空中升力系数达到其失速上限、
+机翼在空中再也无法支撑飞行器之处。固定几何飞行器在 $\xi$ 的可行范围内承载 $2.4$ 至 $3.5$~kg
+载荷，这证实既有设计满足数千克量级的载荷目标。放开几何使载荷大致翻倍，至 $5.9$ 至 $8.4$~kg，
+其原因由第~\ref{sec:optgeom} 节精确给出：优化器将艇体扩大至发射包线边缘，从而“买到”浮力。
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{payload_xi.png}
+\caption{固定 CAD 几何与受包线约束的自由几何下，载荷随浮力失衡 $\xi$ 的变化。两条曲线均终止
+于空中升力系数达到 $0.60$ 失速上限之处。}
+\label{fig:payload}
+\end{figure}
+
+\subsection{优化后的几何及其约束}\label{sec:optgeom}
+表~\ref{tab:soln} 列出跨失衡扫掠的自由几何解。其模式一致而富有启示：在每个 $\xi$ 值上，艇体
+直径与长度都顶到 $0.12$~m 与 $1.30$~m 的包线上限，机翼展长顶到“一个艇长减 $0.30$~m”的几何
+上限，空中升力系数顶到其 $0.60$ 失速上限。换言之，优化器同时将飞行器推向三个极限——发射平台
+允许它多大、机身允许机翼展多宽、机翼在空中能出多大力——而它返回的载荷，正是在支付了任务能量
+与耐压壳之后所剩者。由静稳定性门限定尺的十字形尾翼，总面积约 $86$~cm$^2$、力臂 $0.585$~m，增
+重约四分之三千克；滚转操纵权门限则被稳定性本已要求的尾翼富余满足。两道门限都不驱动载荷，这
+恰是可行性门限应有的表现。
+
+\begin{table}[h]\centering
+\caption{跨浮力扫掠的自由几何 A 层解。$\xi=0.15$ 一行为参考设计点。}\label{tab:soln}
+\small
+\begin{tabular}{@{}rrrrrrrr@{}}\toprule
+$\xi$ & 载荷 & 质量 & $d$ & $L$ & 展长 & $S$ & $S_{\text{fin}}$ \\
+      & (kg) & (kg) & (mm) & (mm) & (m) & (m$^2$) & (cm$^2$) \\\midrule
+$0.00$ & $5.86$ & $9.12$ & $120$ & $1300$ & $1.00$ & $0.097$ & $64.8$ \\
+$0.05$ & $6.28$ & $9.57$ & $120$ & $1300$ & $1.00$ & $0.102$ & $71.4$ \\
+$0.10$ & $6.71$ & $10.03$ & $120$ & $1300$ & $1.00$ & $0.107$ & $78.4$ \\
+$0.15$ & $7.14$ & $10.48$ & $120$ & $1300$ & $1.00$ & $0.112$ & $85.7$ \\
+$0.20$ & $7.56$ & $10.94$ & $120$ & $1300$ & $1.00$ & $0.117$ & $93.3$ \\
+$0.25$ & $7.99$ & $11.39$ & $120$ & $1300$ & $1.00$ & $0.122$ & $101.2$ \\
+$0.30$ & $8.41$ & $11.85$ & $120$ & $1300$ & $1.00$ & $0.127$ & $109.5$ \\\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{灵敏度与设计杠杆}
+对偶解为各杠杆排序。最强者为排开体积，灵敏度 $-1.43$：扩大艇体是增加载荷最直接的途径，这也
+是优化器将艇体顶到边界的原因。其次为电池比能 $-0.49$，再次为空中效率与航程约 $\pm0.30$，以
+及所需水下速度 $+0.38$。收拢诱导阻力因子的灵敏度仅 $+0.001$——可忽略——因为收拢机翼在几乎零
+升下工作、其配平阻力也相应极小。这最后一个数字值得驻足，因为它是飞行器设计论点的量化形式：
+折叠机翼几乎不付出阻力代价，故相较于入水前抛弃机翼，保留机翼所带来的载荷惩罚很小。
+
+\subsection{代理模型与已定型模型的验证}
+每个代理式与已装配的程序，在被信任之前，都经过五种独立手段的校核。其一为前已述及的空—水交叉
+验证：收拢诱导阻力因子在两项研究之间一致到百分之七，而这是任何单项研究都无法做出的比较。其
+二为与解析先验的吻合：式~\eqref{eq:clalpha} 中的升力斜率指数 $1.105$ 对比于 $1$、被摩擦与形
+阻两极所夹的雷诺指数 $-0.112$、以及空化峰接近于零的指数，都落在第一性原理所指之处。其三为复
+现质量：每条按机翼分列的极曲线都以高于 $0.98$ 的决定系数被还原，每个保留的单项式拟合都以低
+于 $0.02$ 的对数均方根误差被还原。其四为 GP 合法性，逐项验证：进入约束的每个量都具有正系数
+形式，唯一的例外——有弯度的展开机翼、其零升截距为负——被一个正的软极大仿射代理式取代。其五
+为物理单调性：升力随迎角上升、阻力随机翼展开上升、吸力峰与速度无关，在所采样的每一点上皆
+然。已装配的程序以同样的精神受审计：其对偶灵敏度的符号与量级均如预期，其起作用的约束——质量
+闭合与浮力——正是一个接近中性的跨介质飞行器所应受限者，这本身就是模型接线正确的证据。
+
+\section{A 层结论}
+
+A 层研究归纳出三项关键结论。
+第一，飞行器的设计限制源自浮力与飞行包线，而非气动力或结构属性；实际约束体现为艇体尺寸的计划上限，而最灵敏的指标指向排开体积，因此载荷能力几乎完全由计划的艇体尺寸觉得；换而言之，艇体特性优良，理论上基本不受动力学限制。
+现有 CAD 方案可承载约3kg载荷，而经整体优化后，承载能力提升至约7kg。
+第二，设计主张完成了定量验证：收拢机翼导致的额外阻力在整机尺度上可忽略不计，
+故相较于抛弃机翼，将一副可操纵机翼保留至入水阶段基本不施加额外载荷代价；
+同时，斜置机翼旋转途中升力线斜率清晰的 $\cos\Lambda$ 关系，也证实斜置机翼的气动特性符合经典斜翼理论的预期。
+第三，CFD模型不完善问题：展开机翼的绝对效率尚未达到网格收敛，当前结果由理论主导而非网格下的拟合；而入水常数暂未完全考虑到模型内，有待专项研究。
+当前模型的敏感性分析揭示该夸介质飞行器设计应优先聚焦于以下几点指标：依次为发射包线尺寸、电池能量密度，以及展开机翼的效率（枢轴电机速度）。
+
+% \bibliographystyle 由 new-aiaa.cls 设定
+\bibliography{uauv}
+
+\end{document}

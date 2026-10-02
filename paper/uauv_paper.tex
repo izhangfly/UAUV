@@ -1,0 +1,566 @@
+\documentclass[conf]{new-aiaa}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{longtable,tabularx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage[section]{placeins}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{xurl}
+\newcommand{\gpc}[1]{\textcolor{teal}{\small\textsf{[#1]}}} % GP-class tag
+\graphicspath{{figures/}}
+\emergencystretch=2.5em
+\AtBeginDocument{%
+  \setlength{\intextsep}{5pt plus 2pt minus 1pt}%
+  \setlength{\textfloatsep}{6pt plus 2pt minus 2pt}%
+  \setlength{\abovecaptionskip}{3pt}%
+  \setlength{\belowcaptionskip}{1pt}%
+}
+
+\title{Layer-A Geometric-Programming Sizing of a Single Oblique-Wing Trans-Medium Vehicle: CFD-Calibrated Surrogates and a Buoyancy-Limited Payload Frontier}
+\author{Yiyang I. Zhang\footnote{Independent Researcher, Winchester College.}}
+\affil{Winchester College, Winchester, United Kingdom}
+
+\begin{document}
+\maketitle
+
+\section{Methodology}
+
+\subsection{Modelling framework and the scope of Layer~A}
+The vehicle is a slender, missile-shaped hull carrying a single straight wing on one central
+vertical pivot. In air the wing is deployed perpendicular to the body to generate lift; before the
+vehicle enters the water the wing rotates flat against the hull, so that underwater the vehicle is a
+clean body of revolution whose small residual overhang provides a hydrodynamic trim force. Sizing
+such a vehicle couples three normally separate disciplines---aerodynamics, hydrodynamics, and
+structures---and two operating media whose dynamic pressures differ by more than two orders of
+magnitude. To keep the coupled problem tractable and, crucially, to guarantee that the optimum found
+is the \emph{global} one, the design is decomposed into three layers. Layer~A, the subject of this
+paper, is a geometric program (GP) that fixes every continuous sizing variable for a prescribed
+wing-skew angle and a prescribed buoyancy state. Layer~B, a Bayesian optimiser that schedules the
+wing-skew trajectory during the dive~\cite{long2025entire}, sits above Layer~A and is not treated here. A computational
+fluid dynamics (CFD) campaign underpins both layers by supplying the aerodynamic and hydrodynamic
+coefficients that cannot be written analytically.
+
+A geometric program is an optimisation problem in which a posynomial objective is minimised subject
+to posynomial inequality constraints and monomial equality constraints. A \emph{monomial} is a
+product of powers of the design variables with a positive leading coefficient; a \emph{posynomial}
+is a sum of monomials. The defining property that makes the formulation attractive is that, under the
+change of variables $u_i\mapsto\ln u_i$, every GP becomes convex, so a solver returns the global
+optimum---not merely a local one~\cite{boyd2007tutorial}---together with the sensitivity of the objective to every
+constraint. The engineering price of this guarantee is that each governing relation must be cast into
+posynomial or monomial form; the methodology below is largely the discipline of paying that price
+honestly.
+
+\subsection{CFD design of experiments}\label{sec:cfd}
+The coefficients that Layer~A cannot derive from first principles are the aerial and underwater drag
+polars, the lift-curve slope and its variation with wing skew, the stowed-wing trim lift, and the
+cavitation suction peak. These, and only these, define the CFD design of experiments. Two campaigns
+were run in OpenFOAM~v2606 with the steady incompressible solver \texttt{simpleFoam} and the
+$k$--$\omega$ SST turbulence model. The aerial campaign meshed all ten wing positions from stowed
+($\Lambda=90^\circ$) to deployed ($\Lambda=0^\circ$) at $10^\circ$ intervals inside a free-air domain
+of $17\times12\times12$~m, and swept the angle of attack from $-4^\circ$ to $+14^\circ$ by rotating
+the inlet velocity vector rather than re-meshing, which saved roughly nine-tenths of the meshing
+effort. The underwater campaign reused the same meshes with water properties, added a speed sweep of
+$2$ to $20$~m/s at the deployed and stowed extremes, and treated operating depth as a
+post-processing parameter, since in an incompressible solution the flow field is independent of the
+absolute pressure level and depth enters only through the cavitation number. Every force coefficient
+was referenced consistently to the wing planform area, and convergence was judged by coefficient
+stability---the mean of the final fifty iterations was required to differ from the preceding fifty by
+less than one percent---rather than by a fixed residual threshold. As an independent check on the
+whole pipeline, the stowed induced-drag factor obtained in air and in water, at Reynolds numbers that
+differ by a factor of about $1.5$, agreed to within $7\%$; because the drag coefficient is
+dimensionless and, at matched Reynolds number, depends only on geometry, this agreement confirms that
+the two campaigns are internally consistent.
+
+\subsection{GP-compatible surrogate fitting}
+Each CFD relationship was reduced to a GP-legal surrogate with the \texttt{gpfit} workflow of Hoburg~et~al.~\cite{hoburg2016data}. Where a
+relationship is affine on logarithmic axes it was fitted as a single monomial by ordinary least
+squares in log space, which is mathematically identical to a one-term maximum-affine fit and is
+numerically robust; where a relationship carries genuine curvature, a multi-term softmax-affine
+posynomial was fitted instead. The lift-curve slope varies with wing skew as
+\begin{equation}
+C_{L\alpha}(\Lambda) = 0.847\,(\cos\Lambda)^{1.105}\ \text{rad}^{-1},
+\qquad(\text{rms}_{\log}=0.011),
+\label{eq:clalpha}
+\end{equation}
+whose exponent of $1.105$ is within eleven percent of the value of unity predicted by the
+sweep-independence principle, so the fit does more than interpolate: it confirms the analytic
+expectation that only the velocity component normal to the wing generates lift. The induced-drag
+factor rises steeply as the wing folds and its effective aspect ratio collapses,
+\begin{equation}
+k(\Lambda) = 0.631\,(\cos\Lambda)^{-1.352}\ ,
+\qquad(\text{rms}_{\log}=0.013),
+\label{eq:kschedule}
+\end{equation}
+climbing from $0.64$ at full deployment to $22.9$ when stowed---a thirty-six-fold increase that is
+the direct signature of the aspect-ratio collapse in the relation $k=1/(\pi e A)$. The underwater
+zero-lift drag scales with Reynolds number as $C_{D0,w}=0.185\,\mathrm{Re}^{-0.112}$, an exponent
+that sits between the $-0.2$ of pure turbulent skin friction and the zero of pure form drag,
+consistent with a body whose drag is a mixture of the two. The cavitation suction peak was found to
+be essentially constant, as a dimensionless quantity must be: for the stowed configuration, whose
+trim lift keeps it near zero lift coefficient, $-C_{p,\min}\approx1.16$, and this constant is used as
+the conservative cavitation gate.
+
+\section{The geometric-programming model}
+
+\subsection{Objective and requirements}
+The objective is to \emph{maximize payload} for the required ranges:
+\begin{equation}
+\text{minimize}\quad m_{\text{pay}}^{-1},\qquad R_a\ge R_a^{\min},\ \ R_w\ge R_w^{\min}.
+\gpc{monomial objective}
+\end{equation}
+
+\subsection{Aerial cruise: steady level flight}
+With the wing deployed, lift balances weight, thrust balances drag~\cite{hoburg2014geometric}:
+\begin{align}
+m g &\le \tfrac12\rho_a V_a^2 S\,C_{L,a}, \gpc{monomial} \\
+D_a &\ge \tfrac12\rho_a V_a^2 S\,C_{D,a}, \gpc{monomial (relaxed)} \\
+P_a &\ge D_a V_a / \eta_a. \gpc{monomial}
+\end{align}
+These are the aircraft steady-flight relations of Ref.~\cite{hoburg2014geometric}, Eqs.~(15)--(18).
+
+\subsection{Aerodynamic drag build-up}
+The drag coefficient decomposes into induced, profile, and form
+contributions~\cite{hoburg2014geometric,hoerner1965fluid}:
+\begin{align}
+C_{D,a} &\ge \frac{C_{L,a}^2}{\pi e A}
+           + C_{Dp}(C_{L,a},\mathrm{Re},\Lambda)
+           + C_{D0,a}, \gpc{posynomial}\\[4pt]
+C_{D0,a} &= C_f\,(1+k)\,\frac{S_{\text{wet}}}{S},
+           \qquad C_f = \frac{0.074}{\mathrm{Re}^{0.2}},
+           \qquad \mathrm{Re} = \frac{\rho_a V_a c}{\mu}, \gpc{monomial}\\[4pt]
+(1+k) &= 1 + 1.5\left(\frac{d}{L}\right)^{3/2}
+        +     7.0\left(\frac{d}{L}\right)^{3}. \gpc{posynomial}\label{eq:formfactor}
+\end{align}
+Equation~\eqref{eq:formfactor} is Hoerner's~\cite{hoerner1965fluid} Eq.~(28) for streamlined bodies of
+revolution. The term $1.5(d/L)^{3/2}$ captures the supervelocity increment (Eq.~26, $\Delta q_{\text{av}}/q
+\propto(d/L)^{3/2}$); the $7(d/L)^3$ term is the separation/pressure component, negligible for
+$d/L\lesssim0.2$. For our hull ($d/L\approx0.10$): $(1+k)\approx1.054$, i.e.\ a
+\emph{5.4\%} viscous drag adder from thickness — a far smaller contribution than the $\sim$20\%
+assumed in the design brief, which conservatively included appendages. The SLA (service-life-allowance)
+roughness/appendage increment is added as an empirical factor $f_{\text{SLA}}$, i.e.\
+$(1+k)_{\text{eff}}=f_{\text{SLA}}(1+k)_{\text{naked}}$. The turbulent flat-plate law
+$C_f=0.074\,\mathrm{Re}^{-0.2}$~\cite{hoburg2014geometric} is monomial and used in place of the ITTC
+1957 log-law~\cite{myring1976theoretical,allen2000propulsion}; for $\mathrm{Re}\approx
+2\times10^{7}$--$3\times10^{6}$ (water/air on $L\approx 1$~m) the power-law fit error is $<2\%$.\par
+The profile-drag term $C_{Dp}(C_{L,a},\mathrm{Re},\Lambda)$ is \emph{not analytic} and must be supplied
+as a fitted posynomial from CFD (Sec.~\ref{sec:cfd}), following the gpfit workflow of
+Ref.~\cite{hoburg2016data}. The $\Lambda$-dependence of the Oswald factor $e(\Lambda)$ is also CFD-fitted;
+at $\Lambda=0$ the analytic prior is $e\approx0.9$ from lifting-line theory~\cite{hoerner1985fluid}.
+
+\subsection{Propulsion and endurance (electric)}
+For a battery-electric vehicle the fuel-burn/Breguet model of Ref.~\cite{hoburg2014geometric} is
+replaced by a constant-mass energy balance; endurance $t$ equals stored energy over
+power~\cite{allen2000propulsion,rutherford2008southampton,lin2026energies}:
+\begin{align}
+E_b   &= e_b\, m_b,                  & R_a   &= V_a t_a,\quad R_w = V_w t_w, \gpc{monomial}\\
+E_b   &\ge P_a t_a + P_w t_w + P_{\text{hotel}}t_{\text{total}}, \gpc{posynomial}\\
+\eta_a&\le \eta_{\text{motor}}\,\eta_{\text{prop}}. \gpc{monomial}
+\end{align}
+For the aerial leg, $\eta_{\text{prop}}$ follows the actuator-disk model of
+Ref.~\cite{hoburg2014geometric}, Eq.~(37), with $\eta_i\le 2/(1+\sqrt{1+T/(\frac12\rho V^2
+A_{\text{prop}})})$. For the underwater leg, the optimal propeller efficiency is approximately
+constant $\eta_{\text{prop,uw}}\approx0.81$~\cite{allen2000propulsion}. System-level Li-ion
+specific energy is $\approx100$--$180$~Wh/kg (cell: $190$--$300$~Wh/kg)~\cite{lin2026energies};
+REMUS field data~\cite{allen2000propulsion} confirm $1000$~Wh over $20$~h at $1.5$~m/s ($P
+\approx50$~W). Hotel load $\approx 200$--$220$~W (survey-class AUV)~\cite{lin2026energies}; for
+this one-off sprint design, factor it into the fixed-mass term or drop if payload power is
+dominant.
+
+\subsection{Mass build-up}
+\begin{align}
+m &\ge m_{\text{pay}} + m_s + m_b + m_{\text{prop}} + m_{\text{fixed}}, \gpc{posynomial}\\
+m_{\text{prop}} &\le c_m\,P_{\max}. \gpc{monomial (power-law)}\\
+m_s &\ge m_{\text{skin}} + m_{\text{fins}} + m_{\text{pivot}}. \gpc{posynomial}
+\end{align}
+If the hull is unstiffened (plausible at $100$~mm diameter), $m_{\text{skin}} = \rho_{\text{mat}}\,\pi
+d\,L\,t_s$ with $t_s$ sized by the buckling gate (Sec.~\ref{sec:structure}). The power-law mass
+coefficient $c_m$ (kg/kW) for a brushless DC motor + controller is $\approx 0.1$--$0.3$~kg/kW
+(representative UAV/UUV values); verify against specific vendor data.
+
+\subsection{Underwater cruise: buoyancy and wing trim}\label{sec:buoyancy}
+Underwater the wing is stowed. Buoyancy supports most of the weight; the stowed overhang provides a
+hydrodynamic trim force that closes the vertical balance. With $B=\rho_w g\nabla$ and the imbalance
+fraction $\xi=(W-B)/B$ \emph{swept as a parameter}, the balance is monomial per solve:
+\begin{align}
+B   &= \rho_w g\, \nabla, \gpc{monomial}\\
+m g &= B\,(1+\xi),        \gpc{monomial in $\xi$ (fixed per solve); SP if $\xi$ free}\\
+L_{\text{tr}} &= \xi B = \tfrac12\rho_w V_w^2 S_{\text{stow}}\,C_{L,\text{uw}}. \gpc{monomial}
+\end{align}
+Sweeping $\xi$ from slightly negative (positively buoyant, wing trims down) to positive (heavy,
+wing lifts — payload exceeds the buoyancy ceiling) traces a payload--trim-drag frontier. The trim
+lift $L_{\text{tr}}$ induces drag $D_{\text{tr}}\ge k_{\text{uw}} L_{\text{tr}}^2/
+(\tfrac12\rho_w V_w^2 S_{\text{stow}})$ that feeds the underwater power term.
+The stowed wing's hydrodynamic behaviour is self-compensating: as the wing folds flat its aspect
+ratio collapses $A\sim3.3 \to 0.1$ (Jones slender-body limit $\sim\pi A/2$~\cite{hoerner1985fluid}),
+which reduces $C_{L\alpha}$ by roughly the same factor ($\sim22$) as the water/air $q$-ratio
+($\sim130$) divided by the area reduction ($\sim3$): $130/(3\cdot22)\approx1.9$. This
+near-cancellation — $\textit{not}$ an exact equality — is the analytic backbone of the
+self-compensation thesis in the design brief and is tested directly by the HYDRO CFD campaign.
+The added-mass correction for vertical motion is negligible in the axial direction
+($k_a\approx0.03$ at $L/d\approx10$~\cite{newman2018marine}) but may be $\sim$95\% of the
+displaced mass laterally~\cite{newman2018marine}; on entry the effective mass $(m+m_a)$ replaces
+$m$ in the impact constraint (Sec.~\ref{sec:entry}) and in any lateral-belly-flop transient (not
+modelled here).
+
+\subsection{Underwater hydrodynamic drag}
+For the slender body of revolution,
+\begin{align}
+D_w      &= \tfrac12\rho_w V_w^2 S_{\text{wet}}\,C_{D,w}, \gpc{monomial}\\
+C_{D,w}  &\ge C_f\,(1+k) + k_{\text{uw}}\,
+            \frac{L_{\text{tr}}^2}{(\tfrac12\rho_w V_w^2)^2 S_{\text{stow}}^2}, \gpc{posynomial}
+\end{align}
+with $(1+k)$ from Eq.~\eqref{eq:formfactor} (same form factor, water Reynolds number). The trim-lift
+induced-drag coefficient $k_{\text{uw}}$ comes from CFD (stowed wing, $\Lambda=90^\circ$). At
+$d/L=0.10$, the minimum-drag thickness ratio $\approx 0.18$--$0.20$~\cite{hoerner1965fluid}; our
+hull falls on the thinner (friction-dominated) side.
+
+\subsection{Cavitation margin}\label{sec:cavitation}
+The cavitation inception condition~\cite{brennen2014cavitation} is
+\begin{equation}
+-C_{p,\min}\ \le\ \sigma_i,
+\qquad \sigma = \frac{p_{\text{atm}} + \rho_w g h - p_v}{\tfrac12\rho_w V_w^2},
+\qquad p_v(20^\circ\text{C})\approx 2.34\ \text{kPa}.
+\gpc{posynomial $\le$ monomial}
+\end{equation}
+At the surface ($h=0$, $V_w=20$~m/s): $\sigma\approx0.495$, consistent with
+the design brief. Amromin and Rozhdestvensky~\cite{amromin2022cavitation} show that at hull Reynolds
+numbers $\mathrm{Re}\gtrsim10^7$ (our $\mathrm{Re}\approx2\times10^7$) the difference
+$|\min C_p|-\sigma_i\to0$, i.e.\ the $\sigma_i=-C_{p,\min}$ rule is increasingly accurate. The
+constraint is therefore conservative. Operating below this bound keeps the vehicle clear of the supercavitating regime addressed for dedicated high-speed underwater bodies~\cite{dzielski2003benchmark,zou2023optimized}, which lies outside the present cavitation-limited design; the suction peak $-C_{p,\min}$ is the \emph{CFD deliverable}
+(fitted vs $C_L$ or $\alpha$ from the HYDRO campaign). The GP enters it as
+$\tfrac12\rho_w V_w^2(-C_{p,\min})+p_v\le p_{\text{atm}}+\rho_w g h$, which is posynomial in $V_w$
+(with $-C_{p,\min}$ pre-fitted as a monomial/posynomial in $C_L$).
+
+\subsection{Pressure-hull structure and buckling}\label{sec:structure}
+For operating depth $h$, the thin-shell hoop stress (unstiffened tube) gives a monomial gauge
+constraint~\cite{shinoka2024structural}:
+\begin{equation}
+\sigma_h = \frac{p_d\, d}{2 t_s} \le \sigma_y \ \Rightarrow\
+p_d \le \frac{2\sigma_y t_s}{d},
+\qquad p_d = \rho_w g h. \gpc{monomial}
+\end{equation}
+External-pressure buckling adds a second limit. The Bryant overall-elastic-buckling collapse
+pressure~\cite{shinoka2024structural} is
+\begin{equation}
+p_{\text{cr}} = \frac{E\,t_s/a}{\,n^2-1+\lambda^2/2\ }
+                \left[\frac{1}{(n^2+ \lambda^2)^2}\right] + \cdots
+                \gpc{signomial (discrete $n$) / non-GP}
+\end{equation}
+where $\lambda=\pi a/L$, $a=d/2$ the radius, $n$ the integer buckling lobe number ($\ge2$).
+The full Bryant form (not shown in full here) contains an additional $\lambda^4$ factor in the
+numerator; this displayed sketch omits it — the equation is illustrative and will be replaced by a
+fitted monomial in the GP implementation.
+This is \emph{signomial} (posynomial denominator inverted) and has a discrete inner minimization over
+$n$. For a thin unstiffened tube at our small diameter ($100$~mm), the recommended GP path is to
+\emph{factor out} the $n$-minimization into an offline evaluation and fit a monomial
+$p_{\text{cr}} \approx C\,E\,(t_s/a)^\alpha\,(a/L)^\beta$ over the $(t_s/a,\ L/a)$ range,
+following the Windenburg--Trilling closed form. The operational safety factor is
+$\mathrm{SF}_{\text{overall}}\ge2.0$~\cite{shinoka2024structural}; the constraint in the GP is
+then $p_d \le p_{\text{cr}}/\mathrm{SF}$, which remains monomial after the fit.
+Material: for a first pass use aluminium 6061-T6 ($E\approx69$~GPa, $\sigma_y\approx 250$~MPa,
+$\rho\approx2700$~kg/m$^3$); carbon-fibre or HY-80 steel changes only the constants.
+
+\subsection{Water-entry survival}\label{sec:entry}
+The peak deceleration on water impact is modelled by a monomial fitted from the 2-D interFoam DOE:
+\begin{equation}
+a_{\text{peak}} = C\, V_{\text{entry}}^a\, d^b\, m_{\text{eff}}^c,
+\qquad m_{\text{eff}} = m + m_a, \gpc{monomial fit}
+\end{equation}
+where $m_a=k_a\rho_w\nabla$ is the axial added mass
+($k_a\approx0.03$~\cite{newman2018marine}; a $\sim$3\% correction). The analytic prior from
+slamming theory is $a\approx2$ (force $\propto\frac12\rho V^2$ area), $b\approx2$ (diameter$^2$, from area $\propto d^2$),
+$c\approx-1$ (Newton). All three exponents are \emph{fitted from CFD} — the prior serves only as a
+sanity check. The hard constraint is $a_{\text{peak}}\le 20\,g$; entry angle enters as a secondary
+parameter \emph{treated conservatively} (near-vertical worst case) unless the DOE returns strong
+angular dependence. Song~et~al.~\cite{song2020waterentry} confirm the $V^2$ scaling for oblique
+entry of high-speed projectiles. The GP constraint is monomial: $C V_{\text{entry}}^a d^b
+m_{\text{eff}}^c \le a_{\max}$.
+
+\subsection{Wing skew dynamics (residual roll — trajectory gate)}\label{sec:roll}
+During the skew from $\Lambda=0^\circ$ to $\Lambda=90^\circ$, an asymmetric wake induces a roll
+moment quantified by $C_l(\Lambda)$. This is the single highest-value CFD unknown — currently
+unmeasured across a factor of $\sim20\times$ range. The roll-transient time constant is
+$\tau\approx0.10$--$0.12$~s. The GP does \emph{not} optimize the skew trajectory
+(that is Layer~B / Bayesian optimization); it only imposes the roll-authority feasibility gate:
+\begin{equation}
+|C_l(\Lambda)| \le C_{l,\max},
+\qquad C_{l,\max} \triangleq \frac{\text{tail-fin authority}}{\tfrac12\rho V^2 S b}.
+\gpc{monomial bound}
+\end{equation}
+$C_l(\Lambda)$ is supplied as a fitted posynomial vs $\Lambda$ from the AERO CFD campaign, and
+$C_{l,\max}$ is computed from fin geometry: the cruciform ``VFin'' + ``HFin'' pair
+($\sim$0.20~m span, $\sim$0.05~m chord) provide a roll-authority moment arm through a
+lifting-line fin model. Feedforward tail-deflection scheduling further relaxes the gate (pre-program a
+cancelling deflection per the known $C_l(\Lambda)$ function).
+
+\subsection{Static stability and fin sizing}\label{sec:stability}
+A trans-medium vehicle without a static-stability constraint could converge to an unflyable optimum.
+Renilson~\cite{renilson2018submarine,fossen2011handbook} (Ch.~3, Eq.~113, Table~3.8) defines dimensionless stability
+indices in the vertical ($G_V$) and horizontal ($G_H$) planes:
+\begin{align}
+G_V &= 1 - \frac{M'_w\,(m' + Z'_q)}{M'_q\,Z'_w},
+\qquad
+G_H = 1 - \frac{N'_v\,(m' - Y'_v)}{N'_r\,Y'_v}\ \text{(by analogy)},\ \gpc{signomial (mixed derivative signs); $G_H$ inferred from vertical-plane form, not in Renilson OCR}\\[4pt]
+\text{acceptable:}&\quad G_V\in[0.5,\,0.8],\quad G_H\in[0.2,\,0.4] \qquad\text{(Ray~et~al.~2008)}.
+\end{align}
+Primes denote non-dimensional stability derivatives divided by $\frac12\rho V L^2$ (e.g.\
+$Z'_w = Z_w/(\frac12\rho V L^2)$). The derivatives themselves ($Z'_w, M'_w, Z'_q, M'_q$ for the
+vertical plane; $Y'_v, N'_v, N'_r$ for the horizontal plane) can be approximated from fin geometry
+via low-aspect-ratio lifting-surface theory~\cite{hoerner1985fluid}: for a cruciform fin set at the
+tail, $Z'_w \propto (S_{\text{fin}}/S)(l_{\text{fin}}/\bar{c})$ — the tail volume
+coefficient~\cite{hoerner1985fluid} (Ch.~XI),
+\begin{equation}
+V_H = \frac{S_{\text{fin}}}{S}\,\frac{l_{\text{fin}}}{\bar{c}},
+\qquad
+C_{L,\text{fin}} \propto V_H\,\alpha_{\text{fin}}. \gpc{monomial}
+\end{equation}
+For the GP, the $G_V$ and $G_H$ constraints enter as \emph{feasibility gates} with the derivatives
+expressed as monomials in fin area and moment arm, using the analytic low-AR lift slope
+$\partial C_L/\partial\alpha \approx \pi A_{\text{fin}}/2$~\cite{hoerner1985fluid} ($A_{\text{fin}}
+\approx 2\cdot\text{span}_f/\text{chord}_f$). This is the single most important block missing from
+the original sizing model. At our small scale ($L\approx1$~m), the cruciform fin pair
+(span $\sim\!0.20$~m, chord $\sim\!0.05$~m) gives $A_{\text{fin}}\approx4$, yielding adequate
+control authority; the stability gate validates this rather than leaving it unchecked.
+
+\subsection{Propeller efficiency decomposition}\label{sec:propeller}
+The GP currently uses a lumped propeller efficiency $\eta_{\text{prop}}\approx0.81$
+\cite{allen2000propulsion}. Renilson~\cite{renilson2018submarine} (Ch.~5, Eq.~5.4) decomposes the
+quasi-propulsive coefficient (QPC) into physically distinct factors:
+\begin{equation}
+\text{QPC} = \eta_H \cdot \eta_O \cdot \eta_R,
+\qquad \eta_H = \frac{1-t}{1-w}, \gpc{monomial}
+\end{equation}
+where $t$ = thrust deduction fraction, $w$ = Taylor wake fraction (hull-form dependent,
+$\eta_H\approx1.05$ for streamlined bodies~\cite{renilson2018submarine}), $\eta_O$ = open-water
+propeller efficiency (function of advance ratio $J$ and loading $K_T/J^2$), and $\eta_R$ = relative
+rotative efficiency $\approx1.05$ for single-propeller configurations
+($D_{\text{prop}}/D_{\text{hull}}\approx0.4$--$0.7$). The open-water propeller coefficients are
+canonical monomials~\cite{newman2018marine} (Ch.~2):
+\begin{equation}
+K_T = \frac{T}{\rho n^2 D^4},\quad
+K_Q = \frac{Q}{\rho n^2 D^5},\quad
+J   = \frac{U_A}{n D},\quad
+\eta_O = \frac{J}{2\pi}\frac{K_T}{K_Q}. \gpc{monomial}
+\end{equation}
+If propeller diameter $D$ and RPM $n$ become GP variables, $K_T$ and $K_Q$ are monomials that link
+thrust/torque to $D$ and $n$; the design-space constraint $K_T/J^2 \le (K_T/J^2)_{\max}$ prevents
+overloading. For the fixed-geometry (``hybrid'') baseline, treat $\eta_O$, $\eta_H$, $\eta_R$ as
+constants and revert to $\text{QPC}\approx0.81$. Common AUV system-level values:
+motor $\eta_m\approx0.85$ (brushless DC), QPC $\approx0.8$--$0.9$~\cite{renilson2018submarine},
+yielding the chain $\eta_{\text{prop}} = \eta_m\eta_{\text{QPC}} \approx 0.7$--$0.75$.
+
+\subsection{Summary of the GP}
+The full GP (Layer~A) is:
+\begin{equation}\label{eq:gpsummary}
+\begin{array}{ll}
+\text{minimize}    & m_{\text{pay}}^{-1} \\
+\text{subject to} & \text{Eqs. (steady flight, drag, energy, mass, buoyancy/$\xi$, hydro drag,} \\
+                  & \hspace{2pt}\text{cavitation, hoop stress, buckling [fitted], entry, roll gate,} \\
+	                  & \hspace{2pt}\text{stability $G_V,G_H$, propeller QPC)} \\
+\text{with}        & \text{$\xi$ swept; $\Lambda=\text{fixed}$ (solved at each $\Lambda$)} \\
+                  & C_{Dp}(\Lambda),\ k(\Lambda),\ C_{L,\text{uw}},\ k_{\text{uw}},\ -C_{p,\min},\ C_l(\Lambda),\ a_{\text{peak}} \text{ from CFD}.
+\end{array}
+\end{equation}
+
+\section{Model Justification}\label{sec:justify}
+
+\subsection{Why a geometric program, and why sweep the buoyancy state}
+The choice of a geometric program is not a matter of convenience but of trust. Because the log
+transform makes the problem convex, the solver certifies global optimality and reports, at no extra
+cost, how hard each constraint pushes on the objective; a gradient-based optimiser on the same
+non-convex problem would offer neither guarantee. The price---writing every relation as a
+posynomial---is affordable here because the governing physics is already close to power-law form:
+drag scales as a power of Reynolds number, buoyancy as a product of geometric dimensions, and induced
+drag as the square of lift.
+
+The buoyancy imbalance $\xi=(W-B)/B$ measures how far the vehicle's weight departs from the weight of
+water it displaces. At $\xi=0$ the vehicle is neutrally buoyant and hovers with no trim force; when
+$\xi>0$ it is heavy and the stowed wing must generate upward trim lift to hold depth; when $\xi<0$ it
+is light and the wing trims downward. The imbalance is swept as a parameter rather than left free for
+a specific reason: with $\xi$ fixed, the balance $mg=B(1+\xi)$ is monomial and the whole model
+remains a pure GP; freeing $\xi$ would make that equality signomial and would require the slower
+sequential (signomial-programming) solver, a route applied across aircraft design~\cite{kirschen2018application}. Sweeping $\xi$ is also the physically informative choice,
+because it traces the payload-versus-buoyancy frontier directly: a heavier vehicle carries a larger
+mass budget and therefore more payload, up to the point where the wing can no longer lift it in air.
+
+\subsection{Analytic drag with CFD calibration, not a fixed CFD polar}
+It would be tempting to insert the measured deployed-wing drag polar directly into the GP. That was
+rejected for two reasons. First, a fixed polar is tied to one geometry; once the hull and wing become
+design variables (Sec.~\ref{sec:findings}), the drag must scale with them, which only the analytic
+build-up---skin friction times a form factor times a wetted-area ratio---can do. Second, and more
+subtly, the deployed-wing efficiency inferred from the sweep mesh is not converged: the fitted
+lift-curve slope of $0.835$~rad$^{-1}$ is about five times below the thin-airfoil expectation for the
+wing's aspect ratio, and the fitted induced factor implies an Oswald efficiency of only $0.07$
+against an expected $0.8$--$0.9$. Both discrepancies point to the same cause---a $57{,}000$-cell
+sweep mesh under-resolving the wing's response to angle of attack---so the absolute efficiency is
+better taken from the analytic prior $e\approx0.85$ than from the mesh-limited fit. What the CFD
+\emph{does} deliver reliably are the dimensionless \emph{scalings} of
+Eqs.~\eqref{eq:clalpha}--\eqref{eq:kschedule}, the stowed polar (whose aspect-ratio collapse is a
+real effect, not a mesh artefact), the cavitation gate, and the cross-validated form factor; these
+are what the model uses.
+
+\subsection{Fixed and free geometry, the feasibility gates, and the exclusion of entry}
+The model is solved in two configurations. In the first the geometry is fixed at the as-built CAD
+dimensions, which verifies that the existing vehicle can meet the mission; in the second the hull
+diameter and length, the wing planform, and the fin area are freed within a launch envelope, which
+reveals the design the optimiser would prefer. The static-stability requirement, which in its exact
+form involves stability derivatives of mixed sign and is therefore signomial, is imposed through the
+standard tail-volume coefficients $V_H$ and $V_V$; requiring these to exceed conventional minima is a
+GP-legal proxy that guarantees the same static-margin behaviour without leaving the convex world.
+Finally, water-entry survival is kept out of the optimisation for two reasons: the peak-deceleration
+coefficient is still pending its own two-dimensional impact campaign, and the impact constraint is a
+pass/fail survival check that does not size the vehicle in the way the mission-energy and buoyancy
+constraints do. It is therefore evaluated after the solve, as an audit of the sized design, rather
+than as a driver within it.
+
+\section{Findings}\label{sec:findings}
+
+\subsection{CFD-fitted coefficients}
+The fitted coefficients are physically self-consistent and, where an analytic prior exists, they
+recover it. Figure~\ref{fig:polars} shows the drag polars for all ten skew angles: the induced-drag
+factor grows smoothly and monotonically as the wing folds, with no anomalous point, and every
+per-wing polar is reproduced with a coefficient of determination above $0.98$.
+Figure~\ref{fig:clalpha} plots the lift-curve slope against skew and overlays the monomial fit of
+Eq.~\eqref{eq:clalpha}; the near-unity exponent confirms the $\cos\Lambda$ law.
+Figure~\ref{fig:kcollapse} shows the aspect-ratio collapse of the induced factor on a logarithmic
+axis, and Fig.~\ref{fig:cavitation} shows why the cavitation data separate into two branches---the
+stowed configuration sits at near-zero lift, while the deployed configuration spans a real lift
+range---so that fitting them as a single curve, as a first attempt did, is incorrect; the stowed
+branch supplies the gate value.
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.86\linewidth]{aero_polars_all.png}
+\caption{Aerial drag polars for all ten wing-skew angles. The induced-drag factor
+$k$ (legend) rises monotonically from $0.64$ at full deployment ($\Lambda=0^\circ$) to $22.9$ when
+stowed ($\Lambda=90^\circ$).}
+\label{fig:polars}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{sched_CLalpha.png}
+\caption{Lift-curve slope versus wing skew. The fitted exponent of $1.105$ confirms the
+$C_{L\alpha}\propto\cos\Lambda$ sweep-independence prior to within eleven percent.}
+\label{fig:clalpha}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{sched_k.png}
+\caption{Induced-drag factor versus wing skew on a logarithmic axis: the thirty-six-fold rise is the
+signature of the aspect-ratio collapse as the wing folds flat.}
+\label{fig:kcollapse}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.80\linewidth]{cavitation_split.png}
+\caption{Cavitation suction peak against lift coefficient. The stowed configuration (near zero lift)
+and the deployed configuration (finite lift range) form two distinct branches; the stowed branch,
+$-C_{p,\min}\approx1.16$, sets the cavitation gate.}
+\label{fig:cavitation}
+\end{figure}
+
+\subsection{The payload--buoyancy frontier}
+Figure~\ref{fig:payload} traces payload against the buoyancy imbalance for both geometry cases. In
+both, payload rises with $\xi$, because a heavier vehicle carries a larger mass budget; in both, the
+frontier terminates where the aerial lift coefficient reaches its stall ceiling and the wing can no
+longer support the vehicle in air. The fixed-geometry vehicle carries between $2.4$ and $3.5$~kg of
+payload across the feasible range of $\xi$, which confirms that the as-built design meets a several-
+kilogram payload goal. Freeing the geometry roughly doubles the payload, to between $5.9$ and
+$8.4$~kg, for a reason that Sec.~\ref{sec:optgeom} makes precise: the optimiser enlarges the hull to
+the edge of the launch envelope and thereby buys buoyancy.
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.72\linewidth]{payload_xi.png}
+\caption{Payload versus buoyancy imbalance $\xi$ for the fixed CAD geometry and the
+envelope-constrained free geometry. Both curves end where the aerial lift coefficient reaches the
+$0.60$ stall ceiling.}
+\label{fig:payload}
+\end{figure}
+
+\subsection{The optimised geometry and what constrains it}\label{sec:optgeom}
+Table~\ref{tab:soln} lists the free-geometry solution across the imbalance sweep. The pattern is
+uniform and revealing: at every value of $\xi$ the hull diameter and length pin to their
+envelope caps of $0.12$~m and $1.30$~m, the wing span pins to the geometric limit of one hull length
+minus $0.30$~m, and the aerial lift coefficient pins to its $0.60$ stall ceiling. In other words the
+optimiser drives the vehicle to three limits at once---how large the launch platform allows it to be,
+how wide the fuselage allows the wing to span, and how hard the wing can work in air---and the
+payload it returns is whatever remains after the mission energy and the pressure hull have been paid
+for. The cruciform fins, sized by the static-stability gate, come out at about $86$~cm$^2$ of total
+area on a $0.585$~m moment arm, adding roughly three-quarters of a kilogram; the roll-authority gate
+is satisfied with margin by the fins that stability already demands. Neither gate drives the payload,
+which is exactly the behaviour a feasibility gate should show.
+
+\begin{table}[h]\centering
+\caption{Free-geometry Layer-A solution across the buoyancy sweep. The row at $\xi=0.15$ is the
+reference design point.}\label{tab:soln}
+\small
+\begin{tabular}{@{}rrrrrrrr@{}}\toprule
+$\xi$ & payload & mass & $d$ & $L$ & span & $S$ & $S_{\text{fin}}$ \\
+      & (kg) & (kg) & (mm) & (mm) & (m) & (m$^2$) & (cm$^2$) \\\midrule
+$0.00$ & $5.86$ & $9.12$ & $120$ & $1300$ & $1.00$ & $0.097$ & $64.8$ \\
+$0.05$ & $6.28$ & $9.57$ & $120$ & $1300$ & $1.00$ & $0.102$ & $71.4$ \\
+$0.10$ & $6.71$ & $10.03$ & $120$ & $1300$ & $1.00$ & $0.107$ & $78.4$ \\
+$0.15$ & $7.14$ & $10.48$ & $120$ & $1300$ & $1.00$ & $0.112$ & $85.7$ \\
+$0.20$ & $7.56$ & $10.94$ & $120$ & $1300$ & $1.00$ & $0.117$ & $93.3$ \\
+$0.25$ & $7.99$ & $11.39$ & $120$ & $1300$ & $1.00$ & $0.122$ & $101.2$ \\
+$0.30$ & $8.41$ & $11.85$ & $120$ & $1300$ & $1.00$ & $0.127$ & $109.5$ \\\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Sensitivities and design levers}
+The dual solution ranks the levers that matter. The strongest is the displaced volume, with a
+sensitivity of $-1.43$: enlarging the hull is the most direct way to increase payload, which is why
+the optimiser pins the hull to its bounds. Battery specific energy follows at $-0.49$, then aerial
+efficiency and range at about $\pm0.30$, and required underwater speed at $+0.38$. The stowed
+induced-drag factor registers a sensitivity of only $+0.001$---negligible---because the stowed wing
+operates at almost zero lift and its trim drag is correspondingly tiny. This last number is worth
+dwelling on, because it is the quantitative form of the vehicle's design thesis: the folded wing
+costs almost nothing in drag, so the penalty for keeping the wing rather than discarding it before
+water entry is small.
+
+\subsection{Verification of the surrogates and the sized model}
+Each surrogate and the assembled program were checked by five independent means before either was
+trusted. The first is the air--water cross-validation already noted: the stowed induced-drag factor
+agrees to seven percent between the two campaigns, a comparison that no single campaign could make.
+The second is agreement with analytic priors: the lift-slope exponent of $1.105$ against the value of
+unity in Eq.~\eqref{eq:clalpha}, the Reynolds exponent of $-0.112$ bracketed by the skin-friction and
+form-drag limits, and the near-zero exponent of the cavitation peak all fall where first principles
+say they should. The third is reconstruction quality: every per-wing polar is recovered with a
+coefficient of determination above $0.98$ and every retained monomial fit with a root-mean-square
+logarithmic error below $0.02$. The fourth is GP-legality, verified term by term: each quantity that
+enters a constraint has a positive-coefficient form, the one exception---the cambered deployed wing,
+whose zero-lift intercept is negative---being replaced by a positive softmax-affine surrogate. The
+fifth is physical monotonicity: lift rises with angle of attack, drag rises as the wing deploys, and
+the suction peak is speed-independent, at every point sampled. The assembled program was audited in
+the same spirit: its dual sensitivities are all of the expected sign and magnitude, and its binding
+constraints---mass closure and buoyancy---are exactly those a near-neutral trans-medium vehicle
+should be limited by, which is itself evidence that the model is wired correctly.
+
+\section{Layer-A Conclusions}
+
+Three conclusions follow from the Layer-A study. First, the vehicle is buoyancy- and
+envelope-limited rather than aerodynamically or structurally limited: the binding constraints are the
+hull-size caps and the aerial stall ceiling, and the dominant sensitivity is to displaced volume, so
+payload is bought almost directly with the size the launch platform will allow. The as-built CAD
+vehicle carries roughly three kilograms of payload; an envelope-optimised vehicle of the same family
+carries about seven. Second, the design thesis survives contact with the numbers: the stowed wing's
+trim drag is negligible in the sizing, so retaining a steerable wing through water entry, rather than
+jettisoning it, imposes almost no payload penalty, and the lift-curve slope's clean $\cos\Lambda$
+scaling confirms that the oblique wing behaves as classical sweep theory predicts. Third, the model
+is honest about where it is weakest: the absolute efficiency of the deployed wing is not yet
+grid-converged and is therefore carried through an analytic prior rather than the mesh-limited fit,
+the drag polar over the measured lift range is too narrow to support a full softmax-affine surrogate,
+and the water-entry constant awaits its own campaign. These are the three inputs a refined study
+should target---a grid-convergence mesh for the deployed wing, a wider angle-of-attack sweep or a
+section-level profile-drag polar, and the two-dimensional impact campaign---after which the same
+Layer-A program, unchanged in structure, will return sharper numbers. The value of the present model
+is that it already tells the designer where to look: at the size of the launch envelope, the energy
+density of the battery, and the efficiency of the deployed wing, in that order.
+
+% \bibliographystyle is set by new-aiaa.cls
+\bibliography{uauv}
+
+\end{document}
